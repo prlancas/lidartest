@@ -1,0 +1,6 @@
+# Live LIDAR monitor (lidar_server.py)
+#
+# Only needed for the --serial source (reading a serial/USB-UART port directly).
+# The replay (--file) and TCP (--tcp) sources use the Python standard library
+# only and need nothing installed.
+pyserial>=3.5
