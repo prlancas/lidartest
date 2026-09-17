@@ -7,7 +7,10 @@ HardwareSerial LidarSerial(2);
 
 #define LIDAR_BAUD 115200
 
-const char* SERVER_IP = "192.168.1.104";
+// Prefer the local Docker host, then fall back to the existing robot host.
+// The LiDAR stream must reach whichever machine is currently running rosconfig.
+const char* const SERVER_IPS[] = {"192.168.1.165", "192.168.1.104"};
+const size_t SERVER_IP_COUNT = sizeof(SERVER_IPS) / sizeof(SERVER_IPS[0]);
 const uint16_t SERVER_PORT = 8080;
 
 WiFiClient tcpClient;
@@ -15,6 +18,20 @@ WiFiClient tcpClient;
 // FreeRTOS queue to hold incoming bytes from LiDAR
 static QueueHandle_t lidarQueue = NULL;
 const size_t LIDAR_QUEUE_SIZE = 4096; // number of bytes
+
+bool connectToServer() {
+  for (size_t i = 0; i < SERVER_IP_COUNT; ++i) {
+    const char* serverIp = SERVER_IPS[i];
+    Serial.printf("Attempting TCP connect to %s:%u\\n", serverIp, SERVER_PORT);
+    tcpClient.stop();
+    if (tcpClient.connect(serverIp, SERVER_PORT)) {
+      Serial.printf("TCP connected to %s\\n", serverIp);
+      return true;
+    }
+  }
+  Serial.println("TCP connect failed on both configured hosts");
+  return false;
+}
 
 // Task that continuously drains the hardware UART into the software queue
 void LidarReadTask(void * pvParameters) {
@@ -73,9 +90,7 @@ void setup() {
   }
   Serial.println("\nWiFi Connected");
 
-  Serial.printf("Attempting TCP connect to %s:%u\n", SERVER_IP, SERVER_PORT);
-  if (tcpClient.connect(SERVER_IP, SERVER_PORT)) Serial.println("TCP connected to server");
-  else Serial.println("TCP connect failed, will retry in loop");
+  if (!connectToServer()) Serial.println("Will retry in loop");
 
   Serial.println("Ready.");
 }
@@ -84,8 +99,8 @@ void loop() {
   static unsigned long lastAttempt = 0;
   if (!tcpClient.connected()) {
     if (millis() - lastAttempt > 2000) {
-      Serial.println("Reconnecting TCP...");
-      if (tcpClient.connect(SERVER_IP, SERVER_PORT)) Serial.println("TCP reconnected");
+      Serial.println("Reconnecting TCP (trying both hosts)...");
+      connectToServer();
       lastAttempt = millis();
     }
   }
